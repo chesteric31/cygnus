@@ -50,6 +50,33 @@ def detect_text(path):
     # [END vision_python_migration_text_detection]
 # [END vision_text_detection]
 
+def detect_text_uri(uri):
+    """Detects text in the file located in Google Cloud Storage or on the Web.
+    """
+    from google.cloud import vision
+    client = vision.ImageAnnotatorClient()
+    image = vision.Image()
+    image.source.image_uri = uri
+
+    response = client.text_detection(image=image)
+    texts = response.text_annotations
+    print('Texts:')
+
+    for text in texts:
+        print(f'\n"{text.description}"')
+
+        vertices = ([f'({vertex.x},{vertex.y})'
+                     for vertex in text.bounding_poly.vertices])
+
+        print('bounds: {}'.format(','.join(vertices)))
+
+    if response.error.message:
+        raise Exception(
+            '{}\nFor more info on error messages, check: '
+            'https://cloud.google.com/apis/design/errors'.format(
+                response.error.message))
+# [END vision_text_detection_gcs]
+
 def run_quickstart():
     # [START vision_quickstart]
     import io
@@ -83,16 +110,56 @@ def run_quickstart():
         print(label.description)
     # [END vision_quickstart]
 
+def main():
+    import pika, sys, os
+    connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+    channel = connection.channel()
+
+    channel.exchange_declare(exchange='topic.fotos', exchange_type='topic', durable=True)
+
+    result = channel.queue_declare(queue='cygnus', exclusive=True, durable=True)
+    queue_name = result.method.queue
+
+    #binding_keys = sys.argv[1:]
+    #if not binding_keys:
+    #    sys.stderr.write("Usage: %s [binding_key]...\n" % sys.argv[0])
+    #    sys.exit(1)
+
+    #for binding_key in binding_keys:
+    channel.queue_bind(
+        exchange='topic.fotos', queue=queue_name, routing_key='route')
+
+    print(' [*] Waiting for image to process. To exit press CTRL+C')
+
+
+    def callback(ch, method, properties, body):
+        print(" [x] %r:%r" % (method.routing_key, body.decode()))
+        detect_text_uri(SERVER_API_URL + '/fotos/' + body.decode())
+
+
+    channel.basic_consume(
+        queue=queue_name, on_message_callback=callback, auto_ack=True)
+
+    channel.start_consuming()
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        description=__doc__,
-        formatter_class=argparse.RawDescriptionHelpFormatter)
-    subparsers = parser.add_subparsers(dest='command')
-    detect_text_parser = subparsers.add_parser(
-        'text', help=detect_text.__doc__)
-    detect_text_parser.add_argument('path')
-    args = parser.parse_args()
-    detect_text(args.path)
+    # parser = argparse.ArgumentParser(
+    #     description=__doc__,
+    #     formatter_class=argparse.RawDescriptionHelpFormatter)
+    # subparsers = parser.add_subparsers(dest='command')
+    # detect_text_parser = subparsers.add_parser(
+    #     'text', help=detect_text.__doc__)
+    # detect_text_parser.add_argument('path')
+    # args = parser.parse_args()
+    # detect_text(args.path)
+
+    try:
+        main()
+    except KeyboardInterrupt:
+        print('Interrupted')
+        try:
+            sys.exit(0)
+        except SystemExit:
+            os._exit(0)
 
     # run_quickstart()
