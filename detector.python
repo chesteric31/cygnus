@@ -51,6 +51,7 @@ def detect_text(path):
 # [END vision_text_detection]
 
 def detect_text_uri(uri):
+    print(uri)
     """Detects text in the file located in Google Cloud Storage or on the Web.
     """
     from google.cloud import vision
@@ -65,10 +66,14 @@ def detect_text_uri(uri):
     for text in texts:
         print(f'\n"{text.description}"')
 
-        vertices = ([f'({vertex.x},{vertex.y})'
-                     for vertex in text.bounding_poly.vertices])
+        if text.description.isdigit() and len(text.description) >= 6:
+            print('isDigit {}'.format(text.description))
+            return text.description
 
-        print('bounds: {}'.format(','.join(vertices)))
+        #vertices = ([f'({vertex.x},{vertex.y})'
+                     #for vertex in text.bounding_poly.vertices])
+
+        #print('bounds: {}'.format(','.join(vertices)))
 
     if response.error.message:
         raise Exception(
@@ -111,7 +116,7 @@ def run_quickstart():
     # [END vision_quickstart]
 
 def main():
-    import pika, sys, os
+    import pika, sys, os, requests
     connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
     channel = connection.channel()
 
@@ -133,9 +138,13 @@ def main():
 
 
     def callback(ch, method, properties, body):
-        print(" [x] %r:%r" % (method.routing_key, body.decode()))
-        detect_text_uri(SERVER_API_URL + '/fotos/' + body.decode())
-
+        url = <SERVER_API> + '/fotos/' + body.decode()
+        index = detect_text_uri(url)
+        print(" [x] %r:%r:%r" % (method.routing_key, body.decode(), index))
+        r = requests.post(url, data= {'index': index})
+        # extracting response text
+        pastebin_url = r.text
+        print("The pastebin URL is:%s"%pastebin_url)
 
     channel.basic_consume(
         queue=queue_name, on_message_callback=callback, auto_ack=True)
@@ -143,6 +152,7 @@ def main():
     channel.start_consuming()
 
 if __name__ == '__main__':
+    #import requests
     # parser = argparse.ArgumentParser(
     #     description=__doc__,
     #     formatter_class=argparse.RawDescriptionHelpFormatter)
