@@ -115,56 +115,44 @@ def run_quickstart():
         print(label.description)
     # [END vision_quickstart]
 
-def main():
-    import pika, sys, os, requests
+
+def publishResult(fotoId, fotoIndex):
+    import pika, sys, os
     connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
     channel = connection.channel()
-
     channel.exchange_declare(exchange='topic.fotos', exchange_type='topic', durable=True)
+    message = "{"+"\"id\":\"{}\", \"index\": {}".format(fotoId, fotoIndex) + "}"
+    channel.basic_publish(exchange='topic.fotos', routing_key='route_out', body=message)
+    connection.close()
 
+def consumeQueue():
+    import pika, sys, os
+    connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+    channel = connection.channel()
+    channel.exchange_declare(exchange='topic.fotos', exchange_type='topic', durable=True)
     result = channel.queue_declare(queue='cygnus', exclusive=True, durable=True)
     queue_name = result.method.queue
-
-    #binding_keys = sys.argv[1:]
-    #if not binding_keys:
-    #    sys.stderr.write("Usage: %s [binding_key]...\n" % sys.argv[0])
-    #    sys.exit(1)
-
-    #for binding_key in binding_keys:
     channel.queue_bind(
-        exchange='topic.fotos', queue=queue_name, routing_key='route')
-
+        exchange='topic.fotos', queue=queue_name, routing_key='route_in')
     print(' [*] Waiting for image to process. To exit press CTRL+C')
 
-
-    def callback(ch, method, properties, body):
-        url = <SERVER_API> + '/fotos/' + body.decode()
-        index = detect_text_uri(url)
-        print(" [x] %r:%r:%r" % (method.routing_key, body.decode(), index))
-        r = requests.post(url, data= {'index': index})
-        # extracting response text
-        pastebin_url = r.text
-        print("The pastebin URL is:%s"%pastebin_url)
+    def onMessageCallback(ch, method, properties, body):
+        fotoId = body.decode().replace('"','')
+        #url = < SERVER_API > + '/fotos/' + fotoId
+        url = "https://b9a1-91-86-222-236.ngrok-free.app/fotos/{}".format(fotoId)
+        fotoIndex = detect_text_uri(url)
+        print(" [x] %r:%r:%r" % (method.routing_key, fotoId, fotoIndex))
+        publishResult(fotoId, fotoIndex)
 
     channel.basic_consume(
-        queue=queue_name, on_message_callback=callback, auto_ack=True)
-
+        queue=queue_name, on_message_callback=onMessageCallback, auto_ack=True)
     channel.start_consuming()
 
-if __name__ == '__main__':
-    #import requests
-    # parser = argparse.ArgumentParser(
-    #     description=__doc__,
-    #     formatter_class=argparse.RawDescriptionHelpFormatter)
-    # subparsers = parser.add_subparsers(dest='command')
-    # detect_text_parser = subparsers.add_parser(
-    #     'text', help=detect_text.__doc__)
-    # detect_text_parser.add_argument('path')
-    # args = parser.parse_args()
-    # detect_text(args.path)
 
+if __name__ == '__main__':
     try:
-        main()
+        consumeQueue()
+        #publishResult(1, 10000)
     except KeyboardInterrupt:
         print('Interrupted')
         try:
